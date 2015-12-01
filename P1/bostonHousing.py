@@ -11,6 +11,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import make_scorer
 from sklearn.grid_search import GridSearchCV
+from sklearn.neighbors import NearestNeighbors
 
 ################################
 ### ADD EXTRA LIBRARIES HERE ###
@@ -119,7 +120,7 @@ def learning_curve(depth, X_train, y_train, X_test, y_test):
 
 
     # Plot learning curve graph
-    learning_curve_graph(sizes, train_err, test_err)
+    # learning_curve_graph(sizes, train_err, test_err)
 
 
 def learning_curve_graph(sizes, train_err, test_err):
@@ -211,6 +212,21 @@ def fit_predict_model(city_data):
     print "House: " + str(x)
     print "Prediction: " + str(y)
 
+    #validating the output using nearest neighbours
+    neigh = NearestNeighbors()
+    neigh.fit(X)
+    
+    nneb = neigh.kneighbors(x, 10, return_distance=False) 
+    neibours = []
+
+    for i, index in enumerate(nneb[0,:]):
+        neibours.append(city_data.target[index])
+
+    nmean = np.mean(neibours)
+    nstd = np.std(neibours)
+
+    print "mean ", nmean, "std ", nstd
+     
 
 def main():
     """Analyze the Boston housing data. Evaluate and validate the
