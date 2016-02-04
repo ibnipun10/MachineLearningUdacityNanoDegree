@@ -14,14 +14,16 @@ class LearningAgent(Agent):
         self.planner = RoutePlanner(self.env, self)  # simple route planner to get next_waypoint
         # TODO: Initialize any additional variables here
         self.alpha = 0.1    # learning rate
-        self.gamma = 0.9    # future rewards rate
+        self.gamma = 0.4    # future rewards rate
         self.actions = ('left', 'right', 'forward', None)
         self.lights = ('red','green')
-        self.epsilon = 0
+        self.epsilon = .1
         #self.headings = { '(1, 0)':'east', '(0, -1)':'north', '(-1, 0)':'west', '(0, 1)':'south'}
         #self.headingIndex = ('east','north','west','south')
         self.NoneCtr = 0
         self.maxConsequtiveNone = 3
+        self.trials = 0
+        self.deadlinesCount = 0        
         
         # action : {left, right, forward, none}
         # light :  { red, green }
@@ -29,14 +31,14 @@ class LearningAgent(Agent):
         # traffic directions :  { left, right, forward, none}
         # waypoint : { left, right, forward }
         self.qMatrix = np.zeros([4,2,4,4,4,3], dtype=float)
+        self.unlearnedStatesCount = self.qMatrix.size
 
     def reset(self, destination=None):
         self.planner.route_to(destination)
+        self.trials = self.trials + 1
         
         # TODO: Prepare for a new trip; reset any variables here, if required
-        self.epsilon = .1
-        #print "agent reset"
-        #self.qMatrix = np.zeros([4,48,2,2,2,2,4], dtype=float)
+        self.ReduceEpsilon()
         
     def getIndexInMatrix(self, value, listforSearch):
         for index, val in enumerate(listforSearch):
@@ -58,6 +60,29 @@ class LearningAgent(Agent):
 
         return (light, oncoming, left, right, waypoint)
     
+    def IncreaseFutureRewards(self):        
+        if self.gamma < 0.90:
+            self.gamma = self.gamma + .025
+    
+    def ReduceEpsilon(self):
+        #So once the agent has learned why do we need such a high epsilon
+        self.unlearnedStatesCount = self.unlearnedStatesCount - self.deadlinesCount
+        
+        if self.unlearnedStatesCount < 0:
+            self.epsilon = 0
+        
+        self.deadlinesCount = (self.env.agent_states[self])['deadline']
+        
+        print "epsilon : ", self.epsilon, " unlearnedStates count : ", self.unlearnedStatesCount
+        
+        
+    def checkIndexinarray(self,index, array):
+        for val in np.nditer(array):
+            if val == index:
+                return True
+        
+        return False
+    
     def getMaxQvalueAction(self, inputs, state, current = True):
         matrixPos  = self.getQMatrixPos(inputs, state)
         action = self.actions[0]
@@ -65,12 +90,19 @@ class LearningAgent(Agent):
         #light, oncoming, left, right, waypoint
         Qactions = self.qMatrix[:,matrixPos[0], matrixPos[1],matrixPos[2],matrixPos[3],matrixPos[4]]
         
-        if random.random() < self.epsilon:
+        if current is True and (random.random() < self.epsilon):
             action = random.choice(self.actions)            
         else:
             maxIndexes = np.where(Qactions == Qactions.max())[0]
-            randIndex = random.choice(maxIndexes)
-            action = self.actions[randIndex]
+            
+            # if it gets multiple same Qvalues and if waypoint is there as an action then choose that.
+            waypoint = self.getIndexInMatrix(self.next_waypoint, self.actions)
+            if current is True and self.checkIndexinarray(waypoint, maxIndexes):              
+                action = self.actions[waypoint]
+                print "waypoint : ", waypoint, " maxIndexes ", maxIndexes               
+            else:
+                randIndex = random.choice(maxIndexes)
+                action = self.actions[randIndex]
             
         return action 
     
@@ -96,7 +128,7 @@ class LearningAgent(Agent):
         nextqValue = self.qMatrix[actionPos1, nextagentPos[0],nextagentPos[1],nextagentPos[2],nextagentPos[3],nextagentPos[4]]
         
         #get the new q value
-        newqValue = oldqValue + self.alpha * ( reward + self.gamma * (nextqValue) - oldqValue)
+        newqValue = oldqValue + self.alpha * ( reward + (self.gamma * (nextqValue)) - oldqValue)
         
         
         #set the new q value in the matrix
@@ -109,6 +141,7 @@ class LearningAgent(Agent):
         self.next_waypoint = self.planner.next_waypoint()  # from route planner, also displayed by simulator
         inputs = self.env.sense(self).copy()
         deadline = self.env.get_deadline(self)
+        self.state = self.env.agent_states[self]
 
         # TODO: Update state     
         state = self.env.agent_states[self].copy()               
@@ -117,6 +150,7 @@ class LearningAgent(Agent):
         action = self.chooseAction(inputs, state)
         
         print state
+        
         
         # Execute action and get reward
         reward = self.env.act(self, action)
@@ -127,7 +161,8 @@ class LearningAgent(Agent):
         #new Input
         newInputs = self.env.sense(self)
         self.learnQvalue(state, inputs, action, reward, newState, newInputs)
-
+        self.state = newState
+        
         print "LearningAgent.update(): deadline = {}, inputs = {}, action = {}, reward = {}".format(deadline, inputs, action, reward)  # [debug]
 
 
@@ -140,7 +175,7 @@ def run():
     e.set_primary_agent(a, enforce_deadline=True)  # set agent to track
 
     # Now simulate it
-    sim = Simulator(e, update_delay=0.1)  # reduce update_delay to speed up simulation
+    sim = Simulator(e, update_delay=.01)  # reduce update_delay to speed up simulation
     sim.run(n_trials=100)  # press Esc or close pygame window to quit
 
 
